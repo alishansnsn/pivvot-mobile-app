@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
         color: colors.dark.textSecondary,
     },
     headerName: {
-        fontSize: 28,
+        fontSize: 20,
         fontFamily: "PlayfairDisplay_600SemiBold_Italic",
         fontStyle: "italic",
         color: colors.dark.text,

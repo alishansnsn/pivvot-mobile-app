@@ -10,7 +10,10 @@ import {
     Modal,
     Pressable,
     KeyboardAvoidingView,
+    Animated,
+    Easing,
 } from "react-native";
+import Svg, { Path, Circle, G } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronDown, Plus, Pencil, Check, X } from "lucide-react-native";
@@ -54,6 +57,188 @@ const DATE_OPTIONS = [
     "20 Apr, 2024",
     "30 Apr, 2024",
 ];
+
+const SendInvoiceButton = ({ onSend }: { onSend?: () => void }) => {
+    const [status, setStatus] = useState<'idle' | 'animating' | 'sent'>('idle');
+
+    const arrowX = React.useRef(new Animated.Value(0)).current;
+    const arrowOpacity = React.useRef(new Animated.Value(1)).current;
+    const bgAnim = React.useRef(new Animated.Value(0)).current;
+    const tickScale = React.useRef(new Animated.Value(0)).current;
+    const tickOpacity = React.useRef(new Animated.Value(0)).current;
+    const labelOpacity = React.useRef(new Animated.Value(1)).current;
+    const labelX = React.useRef(new Animated.Value(0)).current;
+    const sentLabelOpacity = React.useRef(new Animated.Value(0)).current;
+    const sentLabelX = React.useRef(new Animated.Value(-20)).current;
+    const textContainerWidth = React.useRef(new Animated.Value(120)).current;
+
+    const handlePress = () => {
+        if (status !== 'idle') return;
+        setStatus('animating');
+        if (onSend) onSend();
+
+        // 1. Wind up: Arrow pulls back (x: -15px)
+        Animated.timing(arrowX, {
+            toValue: -15,
+            duration: 300,
+            useNativeDriver: true,
+            easing: Easing.bezier(0.22, 1, 0.36, 1),
+        }).start(() => {
+            // 2. Exit: Accelerate to right (x: 150px)
+            Animated.parallel([
+                Animated.timing(arrowX, {
+                    toValue: 150,
+                    duration: 300,
+                    easing: Easing.in(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(arrowOpacity, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(labelOpacity, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(labelX, {
+                    toValue: 20,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+            ]).start(() => {
+                setStatus('sent');
+                // 3. Prepare Entry
+                Animated.parallel([
+                    Animated.timing(textContainerWidth, {
+                        toValue: 50,
+                        duration: 400,
+                        easing: Easing.out(Easing.ease),
+                        useNativeDriver: false
+                    }),
+                    Animated.timing(bgAnim, {
+                        toValue: 1,
+                        duration: 400,
+                        useNativeDriver: false,
+                    }),
+                    Animated.spring(tickScale, {
+                        toValue: 1,
+                        friction: 6,
+                        tension: 60,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(tickOpacity, {
+                        toValue: 1,
+                        duration: 100,
+                        useNativeDriver: true
+                    }),
+                    Animated.sequence([
+                        Animated.delay(150),
+                        Animated.parallel([
+                            Animated.timing(sentLabelOpacity, {
+                                toValue: 1,
+                                duration: 400,
+                                easing: Easing.out(Easing.ease),
+                                useNativeDriver: true
+                            }),
+                            Animated.timing(sentLabelX, {
+                                toValue: 0,
+                                duration: 400,
+                                easing: Easing.out(Easing.ease),
+                                useNativeDriver: true
+                            })
+                        ])
+                    ])
+                ]).start();
+            });
+        });
+    };
+
+    const backgroundColor = bgAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['#FFFFFF', '#D2F865']
+    });
+
+    return (
+        <Pressable onPress={handlePress}>
+            <Animated.View style={{
+                backgroundColor,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                paddingHorizontal: 32,
+                paddingVertical: 18,
+                borderRadius: 9999,
+                overflow: 'hidden',
+                shadowColor: status === 'sent' ? '#D2F865' : '#FFFFFF',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: status === 'sent' ? 0.6 : 0.3,
+                shadowRadius: status === 'sent' ? 20 : 10,
+                elevation: 10,
+                width: '100%',
+                minHeight: 60,
+            }}>
+                <Animated.View style={{
+                    position: 'relative',
+                    width: textContainerWidth,
+                    height: 24,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'visible'
+                }}>
+                    <Animated.View style={{
+                        position: 'absolute',
+                        opacity: sentLabelOpacity,
+                        transform: [{ translateX: sentLabelX }],
+                        flexDirection: 'row', alignItems: 'center',
+                        width: 50,
+                        justifyContent: 'center'
+                    }}>
+                        <Text style={{ fontSize: 18, fontWeight: '600', color: '#050505', letterSpacing: 0.5, fontFamily: 'Manrope_600SemiBold', textAlign: 'center' }}>Sent</Text>
+                    </Animated.View>
+
+                    <Animated.View style={{
+                        position: 'absolute',
+                        opacity: labelOpacity,
+                        transform: [{ translateX: labelX }],
+                        flexDirection: 'row', alignItems: 'center',
+                        width: 120,
+                        justifyContent: 'center'
+                    }}>
+                        <Text style={{ fontSize: 18, fontWeight: '600', color: '#050505', letterSpacing: 0.5, fontFamily: 'Manrope_600SemiBold' }}>Send Invoice</Text>
+                    </Animated.View>
+                </Animated.View>
+
+                <View style={{ width: 24, height: 24 }}>
+                    <Animated.View style={{
+                        position: 'absolute',
+                        opacity: arrowOpacity,
+                        transform: [{ translateX: arrowX }]
+                    }}>
+                        <Svg width={24} height={24} viewBox="0 0 24 24">
+                            <G fill="none" stroke="#050505" strokeWidth={1.5}>
+                                <Circle cx={12} cy={12} r={10} />
+                                <Path strokeLinecap="round" strokeLinejoin="round" d="m9 15l6-6m0 0h-4.5M15 9v4.5" />
+                            </G>
+                        </Svg>
+                    </Animated.View>
+
+                    <Animated.View style={{
+                        position: 'absolute',
+                        opacity: tickOpacity,
+                        transform: [{ scale: tickScale }]
+                    }}>
+                        <Svg width={24} height={24} viewBox="0 0 24 24">
+                            <Path fill="#050505" fillRule="evenodd" d="M12 2.75A9.25 9.25 0 0 0 2.75 12c0 1.481.348 2.879.965 4.118c.248.498.343 1.092.187 1.677l-.596 2.225a.55.55 0 0 0 .673.674l2.227-.596a2.38 2.38 0 0 1 1.676.187A9.2 9.2 0 0 0 12 21.25a9.25 9.25 0 0 0 0-18.5M1.25 12C1.25 6.063 6.063 1.25 12 1.25S22.75 6.063 22.75 12S17.937 22.75 12 22.75c-1.718 0-3.344-.404-4.787-1.122a.9.9 0 0 0-.62-.08l-2.226.595c-1.524.408-2.918-.986-2.51-2.51l.596-2.226a.9.9 0 0 0-.08-.62A10.7 10.7 0 0 1 1.25 12m14.28-2.53a.75.75 0 0 1 0 1.06l-4 4a.75.75 0 0 1-1.05.011l-2-1.92a.75.75 0 1 1 1.04-1.082l1.47 1.411l3.48-3.48a.75.75 0 0 1 1.06 0" clipRule="evenodd" />
+                        </Svg>
+                    </Animated.View>
+                </View>
+            </Animated.View>
+        </Pressable>
+    );
+};
 
 export default function NewInvoiceScreen() {
     const router = useRouter();
@@ -530,13 +715,7 @@ export default function NewInvoiceScreen() {
 
             {/* Send Invoice Button */}
             <View style={styles.footer}>
-                <TouchableOpacity
-                    style={styles.sendButton}
-                    onPress={handleSendInvoice}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.sendButtonText}>Send Invoice</Text>
-                </TouchableOpacity>
+                <SendInvoiceButton onSend={handleSendInvoice} />
             </View>
 
             {/* Modals */}
