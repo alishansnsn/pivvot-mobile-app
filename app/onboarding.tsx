@@ -31,7 +31,7 @@ export default function OnboardingScreen() {
                 {/* Image Section */}
                 <View style={styles.cardSection}>
                     <Image
-                        source={require("../Images/mascot.png")}
+                        source={require("../Images/logopivvot.png")}
                         style={styles.mascotImage}
                         resizeMode="contain"
                     />
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
         marginTop: height * 0.05,
     },
     mascotImage: {
-        transform: [{ scale: 0.4 }],
+        transform: [{ scale: 0.25 }],
     },
     textSection: {
         alignItems: "center",

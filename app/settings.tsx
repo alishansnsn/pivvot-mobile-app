@@ -65,13 +65,30 @@ function SettingsGroup({ children }: { children: React.ReactNode }) {
     return <View style={styles.groupContainer}>{children}</View>;
 }
 
+import * as ImagePicker from "expo-image-picker";
+import { useUserStore } from "@/store/userStore";
+
 export default function SettingsScreen() {
     const router = useRouter();
+    const { profileImage, name, handle, setProfileImage } = useUserStore();
 
     const handleLogout = () => {
         // Dismiss any modals (like Settings) and replace the root with Onboarding
         router.dismissAll();
         router.replace("/onboarding");
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 1,
+        });
+
+        if (!result.canceled) {
+            setProfileImage(result.assets[0].uri);
+        }
     };
 
     return (
@@ -94,24 +111,24 @@ export default function SettingsScreen() {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {/* ... Profile Section ... */}
-                {/* ... (Previous Content Omitted for brevity, assuming standard replace pattern) ... -> Actually I need to be careful not to delete content I'm not replacing. replace_file_content replaces the whole chunk. I should target just the parts I'm adding if possible, or include the whole file if I'm replacing a large block. 
-                Wait, I can just add handleLogout before return, and update the button onPress.
-                */}
-
                 {/* Profile Section */}
                 <View style={styles.profileSection}>
-                    <View style={styles.avatarContainer}>
+                    <TouchableOpacity
+                        style={styles.avatarContainer}
+                        onPress={pickImage}
+                        activeOpacity={0.8}
+                    >
                         <Image
-                            source={{
-                                uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face",
-                            }}
+                            source={{ uri: profileImage }}
                             style={styles.avatar}
                             contentFit="cover"
                         />
-                    </View>
-                    <Text style={styles.profileName}>Ali Shan</Text>
-                    <Text style={styles.profileHandle}>@alishansn</Text>
+                        <View style={styles.editBadge}>
+                            <User color={colors.dark.background} size={12} strokeWidth={3} />
+                        </View>
+                    </TouchableOpacity>
+                    <Text style={styles.profileName}>{name}</Text>
+                    <Text style={styles.profileHandle}>{handle}</Text>
                 </View>
 
                 {/* Plan & Referrals Grid */}
@@ -153,7 +170,7 @@ export default function SettingsScreen() {
                                 style={styles.referralsGradient}
                             >
                                 <Zap
-                                    color={colors.dark.textSecondary}
+                                    color={"white"}
                                     size={24}
                                     strokeWidth={1.5}
                                     style={styles.referralsIcon}
@@ -172,7 +189,7 @@ export default function SettingsScreen() {
                 {/* Main Menu Group */}
                 <SettingsGroup>
                     <SettingRow icon={HelpCircle} label="Help" />
-                    <SettingRow icon={User} label="Account" />
+                    <SettingRow icon={User} label="Account" onPress={() => router.push("/account")} />
                     <SettingRow icon={FileText} label="Documents & statements" />
                     <SettingRow icon={Lightbulb} label="Learn" isLast />
                 </SettingsGroup>
@@ -254,11 +271,24 @@ const styles = StyleSheet.create({
         height: "100%",
         borderRadius: 50,
     },
+    editBadge: {
+        position: "absolute",
+        bottom: 0,
+        right: 0,
+        backgroundColor: colors.dark.primary,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 2,
+        borderColor: colors.dark.background,
+    },
     profileName: {
         fontSize: 26,
-        fontFamily: "Fraunces_600SemiBold",
+        fontFamily: "Manrope_500Medium",
         color: colors.dark.text,
-        marginBottom: 4,
+        marginBottom: 2,
     },
     profileHandle: {
         fontSize: 16,

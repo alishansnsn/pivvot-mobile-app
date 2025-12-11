@@ -3,15 +3,7 @@ import { Image } from "expo-image";
 import { ChevronRight } from "lucide-react-native";
 import { useState } from "react";
 import colors from "@/constants/colors";
-
-interface Client {
-    id: string;
-    companyName: string;
-    domain?: string;
-    logoColor: string;
-    totalBilled: number;
-    activeInvoices: number;
-}
+import { Client } from "@/store/clientStore";
 
 interface ClientCardProps {
     client: Client;
@@ -21,7 +13,7 @@ interface ClientCardProps {
 export default function ClientCard({ client, onPress }: ClientCardProps) {
     const [imageError, setImageError] = useState(false);
     const logoUrl = client.domain
-        ? `https://logo.clearbit.com/${client.domain}`
+        ? `https://img.logo.dev/${client.domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ`
         : null;
 
     return (
@@ -31,7 +23,7 @@ export default function ClientCard({ client, onPress }: ClientCardProps) {
             onPress={onPress}
         >
             {/* Logo */}
-            <View style={[styles.logoContainer, { backgroundColor: client.logoColor }]}>
+            <View style={[styles.logoContainer, { backgroundColor: client.logoColor || colors.dark.primary }]}>
                 {logoUrl && !imageError ? (
                     <Image
                         source={{ uri: logoUrl }}
@@ -50,7 +42,7 @@ export default function ClientCard({ client, onPress }: ClientCardProps) {
             <View style={styles.infoContainer}>
                 <Text style={styles.companyName}>{client.companyName}</Text>
                 <Text style={styles.statsText}>
-                    {client.activeInvoices} Active • ${client.totalBilled.toLocaleString()} Billed
+                    {client.activeInvoices || 0} Active • ${(client.totalBilled || 0).toLocaleString()} Billed
                 </Text>
             </View>
 

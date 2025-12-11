@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell } from 'lucide-react-native';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from 'react-native-svg';
@@ -128,16 +128,7 @@ export default function AnalyticsScreen() {
                         {/* Bar Chart */}
                         <View style={styles.barChartRow}>
                             {[40, 60, 100, 50, 80, 45].map((h, i) => (
-                                <View
-                                    key={i}
-                                    style={[
-                                        styles.bar,
-                                        {
-                                            height: h * 0.5,
-                                            backgroundColor: i === 2 ? COLORS.accent : '#2C2D3E'
-                                        }
-                                    ]}
-                                />
+                                <Bar key={i} height={h * 0.5} index={i} isAccent={i === 2} />
                             ))}
                         </View>
 
@@ -177,7 +168,37 @@ export default function AnalyticsScreen() {
             </ScrollView>
         </SafeAreaView>
     );
+
 }
+
+// --- ANIMATED COMPONENTS ---
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+const Bar = ({ height, index, isAccent }: { height: number; index: number; isAccent: boolean }) => {
+    const animatedHeight = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.timing(animatedHeight, {
+            toValue: height,
+            duration: 600,
+            delay: index * 100, // Stagger effect
+            useNativeDriver: false, // Height layout animation
+            easing: Easing.out(Easing.cubic),
+        }).start();
+    }, [height]);
+
+    return (
+        <Animated.View
+            style={[
+                styles.bar,
+                {
+                    height: animatedHeight,
+                    backgroundColor: isAccent ? COLORS.accent : '#2C2D3E'
+                }
+            ]}
+        />
+    );
+};
 
 // --- REVENUE AREA CHART COMPONENT ---
 interface ChartProps {
@@ -189,6 +210,27 @@ const RevenueAreaChart = ({ points, dotPosition }: ChartProps) => {
     const chartWidth = 340;
     const chartHeight = 120;
     const padding = 10;
+
+    // Animation constants
+    const pathLength = 1000; // Approximate length
+    const drawAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        // Reset animation when points change (e.g. tab switch)
+        drawAnim.setValue(0);
+
+        Animated.timing(drawAnim, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.bezier(0.25, 1, 0.5, 1),
+            useNativeDriver: true, // strokeDashoffset supports native driver with AnimatedPath
+        }).start();
+    }, [points]);
+
+    const strokeDashoffset = drawAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [pathLength, 0]
+    });
 
     // Generate smooth curve path from points
     const generatePath = () => {
@@ -248,13 +290,15 @@ const RevenueAreaChart = ({ points, dotPosition }: ChartProps) => {
             />
 
             {/* The line stroke on top */}
-            <Path
+            <AnimatedPath
                 d={linePath}
                 fill="none"
                 stroke={COLORS.primary}
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                strokeDasharray={[pathLength, pathLength]}
+                strokeDashoffset={strokeDashoffset}
             />
 
             {/* Outer glow circle */}

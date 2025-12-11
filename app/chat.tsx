@@ -9,6 +9,7 @@ import {
     TouchableOpacity,
     KeyboardAvoidingView,
     Platform,
+    RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -66,6 +67,14 @@ export default function ChatScreen() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const flatListRef = useRef<FlatList>(null);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        setTimeout(() => {
+            setRefreshing(false);
+        }, 2000);
+    };
 
     useEffect(() => {
         // Load chat history when screen mounts
@@ -163,6 +172,11 @@ export default function ChatScreen() {
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.messagesList}
                 showsVerticalScrollIndicator={false}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark.text} />
+                }
                 onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
             />
 

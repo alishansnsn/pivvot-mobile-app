@@ -5,6 +5,7 @@ import {
     FlatList,
     TextInput,
     TouchableOpacity,
+    RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -12,54 +13,37 @@ import { ChevronLeft, Search, Plus } from "lucide-react-native";
 import { useState } from "react";
 import colors from "@/constants/colors";
 import ClientCard from "@/components/ClientCard";
-
-// Mock Data
-const clients = [
-    {
-        id: "1",
-        companyName: "Acme Corp",
-        domain: "acme.com",
-        logoColor: "#6EE798",
-        totalBilled: 12500,
-        activeInvoices: 3,
-    },
-    {
-        id: "2",
-        companyName: "Globex Inc.",
-        domain: "globex.com",
-        logoColor: "#FFD700",
-        totalBilled: 8500,
-        activeInvoices: 1,
-    },
-    {
-        id: "3",
-        companyName: "Soylent Corp",
-        domain: "soylent.com",
-        logoColor: "#FF6B6B",
-        totalBilled: 25000,
-        activeInvoices: 0,
-    },
-    {
-        id: "4",
-        companyName: "Initech",
-        domain: "initech.com",
-        logoColor: "#9CA3AF",
-        totalBilled: 0,
-        activeInvoices: 0,
-    },
-    {
-        id: "5",
-        companyName: "Umbrella Corp",
-        domain: "umbrellacorp.com",
-        logoColor: "#E74C3C",
-        totalBilled: 50000,
-        activeInvoices: 2,
-    },
-];
+import { useClientStore, Client } from "@/store/clientStore";
+import AddClientModal from "@/components/AddClientModal";
+import ClientDetailsModal from "@/components/ClientDetailsModal";
+import { Toast } from '@/components/ui/Toast';
 
 export default function ClientsScreen() {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
+    const clients = useClientStore((state) => state.clients);
+    const [refreshing, setRefreshing] = useState(false);
+    const [showAddClient, setShowAddClient] = useState(false);
+    const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastMessage, setToastMessage] = useState("");
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        setTimeout(() => {
+            setRefreshing(false);
+        }, 2000);
+    };
+
+    const handleSaveNewClient = (newClient: Client) => {
+        setShowAddClient(false);
+        setToastMessage("Client added successfully");
+        setToastVisible(true);
+    };
+
+    const handleClientPress = (client: Client) => {
+        setSelectedClient(client);
+    };
 
     const filteredClients = clients.filter((client) =>
         client.companyName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -76,7 +60,7 @@ export default function ClientsScreen() {
                     <ChevronLeft color={colors.dark.text} size={24} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Clients</Text>
-                <TouchableOpacity style={styles.iconButton}>
+                <TouchableOpacity style={styles.iconButton} onPress={() => setShowAddClient(true)}>
                     <Plus color={colors.dark.text} size={24} />
                 </TouchableOpacity>
             </View>
@@ -98,17 +82,39 @@ export default function ClientsScreen() {
                 data={filteredClients}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                    <ClientCard client={item} onPress={() => { }} />
+                    <ClientCard client={item} onPress={() => handleClientPress(item)} />
                 )}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark.text} />
+                }
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyStateText}>No clients found</Text>
                     </View>
                 }
             />
-        </SafeAreaView>
+            <AddClientModal
+                visible={showAddClient}
+                onClose={() => setShowAddClient(false)}
+                onSave={handleSaveNewClient}
+            />
+
+            <ClientDetailsModal
+                visible={!!selectedClient}
+                client={selectedClient}
+                onClose={() => setSelectedClient(null)}
+            />
+
+            <Toast
+                visible={toastVisible}
+                message={toastMessage}
+                onHide={() => setToastVisible(false)}
+            />
+        </SafeAreaView >
     );
 }
 

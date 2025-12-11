@@ -75,6 +75,13 @@ function RootLayoutNav() {
                     animation: "slide_from_right",
                 }}
             />
+            <Stack.Screen
+                name="account"
+                options={{
+                    headerShown: false,
+                    animation: "slide_from_right",
+                }}
+            />
         </Stack>
     );
 }
@@ -96,7 +103,9 @@ export default function RootLayout() {
 
     useEffect(() => {
         if (fontsLoaded) {
-            SplashScreen.hideAsync();
+            SplashScreen.hideAsync().catch(() => {
+                // Ignore error if splash screen is already hidden
+            });
         }
     }, [fontsLoaded]);
 

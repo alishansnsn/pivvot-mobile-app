@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated } from "react-native";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Modal, Pressable, RefreshControl } from "react-native";
+import { Image } from 'expo-image';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Bell } from "lucide-react-native";
+import { Bell, X, Calendar, DollarSign } from "lucide-react-native";
 import { useState, useEffect } from "react";
 import colors from "@/constants/colors";
 import BalanceCard from "@/components/BalanceCard";
@@ -17,6 +18,8 @@ const invoices = [
         logoText1: "Acme",
         logoText2: "Corp",
         bgColor: "#6EE798",
+        date: "24 Oct, 2023",
+        domain: "acme.com",
     },
     {
         id: "2",
@@ -27,6 +30,8 @@ const invoices = [
         logoText1: "Tech",
         logoText2: "Start",
         bgColor: colors.dark.accent,
+        date: "23 Oct, 2023",
+        domain: "pylon.com", // Example for Tech Startup
     },
     {
         id: "3",
@@ -37,13 +42,37 @@ const invoices = [
         logoText1: "Design",
         logoText2: "Studio",
         bgColor: "#FF6B9D",
+        date: "22 Oct, 2023",
+        domain: "dribbble.com", // Example for Design Studio
     },
 ];
+
+type InvoiceType = typeof invoices[0];
 
 export default function HomeScreen() {
     const router = useRouter();
     const [isCardRevealed, setIsCardRevealed] = useState(false);
     const slideAnim = useState(new Animated.Value(0))[0];
+    const [selectedInvoice, setSelectedInvoice] = useState<InvoiceType | null>(null);
+    const [detailsVisible, setDetailsVisible] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        // Simulate refresh
+        setTimeout(() => {
+            setRefreshing(false);
+        }, 2000);
+    };
+
+    const handleInvoicePress = (invoice: InvoiceType) => {
+        setSelectedInvoice(invoice);
+        setDetailsVisible(true);
+    };
+
+    const handleViewAll = () => {
+        router.push("/(tabs)/profile");
+    };
 
     // Sync animation with card reveal state
     useEffect(() => {
@@ -77,6 +106,9 @@ export default function HomeScreen() {
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark.text} />
+                }
             >
                 {/* Balance Card with Payment Card Behind */}
                 <BalanceCard
@@ -95,7 +127,7 @@ export default function HomeScreen() {
                 >
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Recent Invoices</Text>
-                        <TouchableOpacity>
+                        <TouchableOpacity onPress={handleViewAll}>
                             <Text style={styles.viewAllButton}>View All</Text>
                         </TouchableOpacity>
                     </View>
@@ -106,16 +138,27 @@ export default function HomeScreen() {
                                 key={invoice.id}
                                 style={styles.invoiceCard}
                                 activeOpacity={0.7}
+                                onPress={() => handleInvoicePress(invoice)}
                             >
                                 {/* 1. LEFT: Icon / Logo Container */}
                                 <View
                                     style={[
                                         styles.invoiceIcon,
-                                        { backgroundColor: invoice.bgColor },
+                                        { backgroundColor: invoice.bgColor, overflow: 'hidden' },
                                     ]}
                                 >
-                                    <Text style={styles.logoTextBold}>{invoice.logoText1}</Text>
-                                    <Text style={styles.logoText}>{invoice.logoText2}</Text>
+                                    {invoice.domain ? (
+                                        <Image
+                                            source={{ uri: `https://img.logo.dev/${invoice.domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ` }}
+                                            style={{ width: 32, height: 32 }}
+                                            contentFit="contain"
+                                        />
+                                    ) : (
+                                        <>
+                                            <Text style={styles.logoTextBold}>{invoice.logoText1}</Text>
+                                            <Text style={styles.logoText}>{invoice.logoText2}</Text>
+                                        </>
+                                    )}
                                 </View>
 
                                 {/* 2. CENTER: Title & Time */}
@@ -140,6 +183,61 @@ export default function HomeScreen() {
                     </View>
                 </Animated.View>
             </ScrollView>
+
+            {/* Invoice Details Modal */}
+            <Modal
+                visible={detailsVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setDetailsVisible(false)}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setDetailsVisible(false)}>
+                    <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Invoice Details</Text>
+                            <TouchableOpacity onPress={() => setDetailsVisible(false)} style={styles.closeButton}>
+                                <X size={24} color={colors.dark.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Content */}
+                        {selectedInvoice && (
+                            <View style={styles.modalBody}>
+                                {/* Icon */}
+                                <View style={[styles.modalIcon, { backgroundColor: selectedInvoice.bgColor }]}>
+                                    <DollarSign size={28} color="#FFF" />
+                                </View>
+
+                                <Text style={styles.modalClientName}>{selectedInvoice.clientName}</Text>
+
+                                {/* Details Grid */}
+                                <View style={styles.modalDetailsGrid}>
+                                    <View style={styles.modalDetailRow}>
+                                        <Text style={styles.modalDetailLabel}>Amount</Text>
+                                        <Text style={styles.modalDetailValue}>
+                                            {selectedInvoice.amount.toFixed(2)} $
+                                        </Text>
+                                    </View>
+                                    <View style={styles.modalDetailRow}>
+                                        <Text style={styles.modalDetailLabel}>Date</Text>
+                                        <Text style={styles.modalDetailValue}>{selectedInvoice.date}</Text>
+                                    </View>
+                                    <View style={styles.modalDetailRow}>
+                                        <Text style={styles.modalDetailLabel}>Time</Text>
+                                        <Text style={styles.modalDetailValue}>{selectedInvoice.time}</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Footer */}
+                        <TouchableOpacity style={styles.modalCloseButton} onPress={() => setDetailsVisible(false)}>
+                            <Text style={styles.modalCloseButtonText}>Close</Text>
+                        </TouchableOpacity>
+                    </Pressable>
+                </Pressable>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -161,12 +259,12 @@ const styles = StyleSheet.create({
         alignItems: "baseline",
     },
     headerGreeting: {
-        fontSize: 20,
+        fontSize: 28,
         fontFamily: "Manrope_400Regular",
         color: colors.dark.textSecondary,
     },
     headerName: {
-        fontSize: 20,
+        fontSize: 28,
         fontFamily: "PlayfairDisplay_600SemiBold_Italic",
         fontStyle: "italic",
         color: colors.dark.text,
@@ -281,5 +379,90 @@ const styles = StyleSheet.create({
         color: colors.dark.textSecondary,
         fontSize: 14,
         fontFamily: "Manrope_500Medium",
+    },
+    // Modal styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        backgroundColor: colors.dark.surface,
+        borderRadius: 24,
+        padding: 24,
+        width: '100%',
+        maxWidth: 400,
+        alignSelf: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontFamily: 'Manrope_700Bold',
+        color: colors.dark.text,
+    },
+    closeButton: {
+        padding: 4,
+    },
+    modalBody: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    modalIcon: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    modalClientName: {
+        fontSize: 20,
+        fontFamily: 'Manrope_700Bold',
+        color: colors.dark.text,
+        marginBottom: 20,
+    },
+    modalDetailsGrid: {
+        width: '100%',
+        gap: 12,
+    },
+    modalDetailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.dark.border,
+    },
+    modalDetailLabel: {
+        fontSize: 14,
+        fontFamily: 'Manrope_500Medium',
+        color: colors.dark.textSecondary,
+    },
+    modalDetailValue: {
+        fontSize: 14,
+        fontFamily: 'Manrope_600SemiBold',
+        color: colors.dark.text,
+    },
+    modalCloseButton: {
+        backgroundColor: colors.dark.border,
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    modalCloseButtonText: {
+        color: colors.dark.text,
+        fontFamily: 'Manrope_600SemiBold',
+        fontSize: 16,
     },
 });

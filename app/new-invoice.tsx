@@ -12,12 +12,53 @@ import {
     KeyboardAvoidingView,
     Animated,
     Easing,
+    Share,
 } from "react-native";
+import QRCode from 'react-native-qrcode-svg';
 import Svg, { Path, Circle, G } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronDown, Plus, Pencil, Check, X } from "lucide-react-native";
+import { ChevronLeft, ChevronDown, Plus, Pencil, Check, X, CheckCircle, FileText } from "lucide-react-native";
 import colors from "@/constants/colors";
+import { useClientStore, Client } from "@/store/clientStore";
+import { useInvoiceStore } from "@/store/invoiceStore";
+import AddClientModal from "@/components/AddClientModal";
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Toast } from "@/components/ui/Toast";
+
+// Animated Counter Component
+const AnimatedCounter = ({ value, style, prefix = '' }: { value: number; style?: any; prefix?: string }) => {
+    const inputRef = React.useRef<TextInput>(null);
+    const animatedValue = React.useRef(new Animated.Value(value)).current;
+
+    React.useEffect(() => {
+        const listener = animatedValue.addListener(({ value }) => {
+            if (inputRef.current) {
+                inputRef.current.setNativeProps({
+                    text: `${prefix}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                });
+            }
+        });
+
+        Animated.timing(animatedValue, {
+            toValue: value,
+            duration: 800,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+        }).start();
+
+        return () => animatedValue.removeAllListeners();
+    }, [value]);
+
+    return (
+        <TextInput
+            ref={inputRef}
+            editable={false}
+            style={[style, { padding: 0, color: style?.color || colors.dark.text }]}
+            defaultValue={`${prefix}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        />
+    );
+};
 
 // Types
 interface InvoiceItem {
@@ -27,20 +68,6 @@ interface InvoiceItem {
     unit: string;
     rate: number;
 }
-
-interface Client {
-    id: string;
-    name: string;
-}
-
-// Mock clients data
-const CLIENTS: Client[] = [
-    { id: "1", name: "Acme Corp" },
-    { id: "2", name: "Tech Startup Inc" },
-    { id: "3", name: "Design Studio" },
-    { id: "4", name: "Marketing Agency" },
-    { id: "5", name: "Consulting Group" },
-];
 
 // Date options for picker
 const DATE_OPTIONS = [
@@ -58,7 +85,8 @@ const DATE_OPTIONS = [
     "30 Apr, 2024",
 ];
 
-const SendInvoiceButton = ({ onSend }: { onSend?: () => void }) => {
+
+const SendInvoiceButton = ({ onSend, onAnimationComplete }: { onSend?: () => void; onAnimationComplete?: () => void }) => {
     const [status, setStatus] = useState<'idle' | 'animating' | 'sent'>('idle');
 
     const arrowX = React.useRef(new Animated.Value(0)).current;
@@ -150,7 +178,9 @@ const SendInvoiceButton = ({ onSend }: { onSend?: () => void }) => {
                             })
                         ])
                     ])
-                ]).start();
+                ]).start(() => {
+                    if (onAnimationComplete) onAnimationComplete();
+                });
             });
         });
     };
@@ -242,11 +272,22 @@ const SendInvoiceButton = ({ onSend }: { onSend?: () => void }) => {
 
 export default function NewInvoiceScreen() {
     const router = useRouter();
+    const clients = useClientStore((state) => state.clients);
+    const addInvoice = useInvoiceStore((state) => state.addInvoice);
 
     // State
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-    const [issuedDate, setIssuedDate] = useState("26 Mar, 2024");
-    const [dueDate, setDueDate] = useState("09 Apr, 2024");
+    const [showSentPopup, setShowSentPopup] = useState(false);
+    const [showAddClientModal, setShowAddClientModal] = useState(false);
+
+    // Date State (using Date objects)
+    const [issuedDate, setIssuedDate] = useState(new Date());
+    const [dueDate, setDueDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // Default +7 days
+
+    // Toast State
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastMessage, setToastMessage] = useState("");
+
     const [notes, setNotes] = useState("");
     const [isNotesSaved, setIsNotesSaved] = useState(true);
     const [items, setItems] = useState<InvoiceItem[]>([
@@ -335,12 +376,66 @@ export default function NewInvoiceScreen() {
 
     const handleSave = () => {
         console.log("Saving invoice...");
-        router.back();
+        setToastMessage("Invoice saved");
+        setToastVisible(true);
+        setTimeout(() => {
+            router.back();
+        }, 1500);
     };
 
     const handleSendInvoice = () => {
         console.log("Sending invoice...");
     };
+
+    const handleAnimationComplete = () => {
+        setShowSentPopup(true);
+        // Hide popup and go back after delay
+        setTimeout(() => {
+            setShowSentPopup(false);
+            router.back();
+        }, 2500);
+    };
+
+    const handleAddClientSave = (newClient: Client) => {
+        setSelectedClient(newClient);
+        setToastMessage("Client added");
+        setToastVisible(true);
+    };
+
+    const handleSaveDraft = () => {
+        // Generate a logo color based on client name
+        const logoColors = ['#6EE798', '#FFD700', '#FF6B6B', '#9B59B6', '#3498DB', '#E74C3C'];
+        const colorIndex = selectedClient ? selectedClient.name.length % logoColors.length : 0;
+
+        // Format dates for storage
+        const formatDate = (date: Date) => {
+            return date.toLocaleDateString("en-US", { day: '2-digit', month: 'short', year: 'numeric' });
+        };
+
+        addInvoice({
+            companyName: selectedClient?.name || selectedClient?.companyName || 'Unknown Client',
+            date: formatDate(issuedDate),
+            amount: total,
+            status: 'Draft',
+            logoColor: logoColors[colorIndex],
+            clientId: selectedClient?.id,
+            clientName: selectedClient?.name,
+            issuedDate: formatDate(issuedDate),
+            dueDate: formatDate(dueDate),
+            items: items,
+            notes: notes,
+        });
+
+        // Show Toast
+        setToastMessage("Draft saved successfully");
+        setToastVisible(true);
+
+        // Delay back navigation to show toast
+        setTimeout(() => {
+            router.back();
+        }, 1500);
+    };
+
 
     // Dropdown Picker Modal Component
     const PickerModal = ({
@@ -419,7 +514,7 @@ export default function NewInvoiceScreen() {
                         </TouchableOpacity>
                     </View>
                     <ScrollView style={styles.modalScroll}>
-                        {CLIENTS.map((client) => (
+                        {clients.map((client) => (
                             <TouchableOpacity
                                 key={client.id}
                                 style={[
@@ -566,7 +661,7 @@ export default function NewInvoiceScreen() {
                     <View style={styles.card}>
                         <View style={styles.cardHeader}>
                             <Text style={styles.cardTitle}>Client Details</Text>
-                            <TouchableOpacity activeOpacity={0.7}>
+                            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowAddClientModal(true)}>
                                 <Text style={styles.addNewClient}>Add New Client</Text>
                             </TouchableOpacity>
                         </View>
@@ -591,7 +686,9 @@ export default function NewInvoiceScreen() {
                                 activeOpacity={0.7}
                                 onPress={() => setShowIssuedDatePicker(true)}
                             >
-                                <Text style={styles.dateText}>{issuedDate}</Text>
+                                <Text style={styles.dateText}>
+                                    {issuedDate.toLocaleDateString("en-US", { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </Text>
                                 <ChevronDown color={colors.dark.textSecondary} size={18} strokeWidth={2} />
                             </TouchableOpacity>
                         </View>
@@ -602,7 +699,9 @@ export default function NewInvoiceScreen() {
                                 activeOpacity={0.7}
                                 onPress={() => setShowDueDatePicker(true)}
                             >
-                                <Text style={styles.dateText}>{dueDate}</Text>
+                                <Text style={styles.dateText}>
+                                    {dueDate.toLocaleDateString("en-US", { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </Text>
                                 <ChevronDown color={colors.dark.textSecondary} size={18} strokeWidth={2} />
                             </TouchableOpacity>
                         </View>
@@ -654,29 +753,23 @@ export default function NewInvoiceScreen() {
                             </TouchableOpacity>
                         )}
 
-                        {/* Summary */}
+                        {/* Summary - Animated */}
                         <View style={styles.summarySection}>
                             <Text style={styles.summaryTitle}>Summary</Text>
 
                             <View style={styles.summaryRow}>
                                 <Text style={styles.summaryLabel}>Subtotal:</Text>
-                                <Text style={styles.summaryValue}>
-                                    ${subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                </Text>
+                                <AnimatedCounter value={subtotal} style={styles.summaryValue} prefix="$" />
                             </View>
 
                             <View style={styles.summaryRow}>
                                 <Text style={styles.summaryLabel}>Tax (10%):</Text>
-                                <Text style={styles.summaryValue}>
-                                    ${tax.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                </Text>
+                                <AnimatedCounter value={tax} style={styles.summaryValue} prefix="$" />
                             </View>
 
                             <View style={styles.totalRow}>
                                 <Text style={styles.totalLabel}>Total:</Text>
-                                <Text style={styles.totalValue}>
-                                    ${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                </Text>
+                                <AnimatedCounter value={total} style={styles.totalValue} prefix="$" />
                             </View>
                         </View>
                     </View>
@@ -710,34 +803,166 @@ export default function NewInvoiceScreen() {
                             </TouchableOpacity>
                         </View>
                     </View>
+
+                    {/* QR Code Payment Section */}
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Payment QR Code</Text>
+                        <View style={styles.qrContainer}>
+                            <View style={styles.qrWrapper}>
+                                <QRCode
+                                    value={`https://pay.pylon.com/pay?amount=${total.toFixed(2)}&client=${selectedClient?.name || 'Client'}`}
+                                    size={160}
+                                    color="black"
+                                    backgroundColor="white"
+                                />
+                            </View>
+                            <Text style={styles.qrHelperText}>
+                                Client can scan to pay ${total.toFixed(2)}
+                            </Text>
+
+                            <TouchableOpacity
+                                style={styles.shareButton}
+                                onPress={async () => {
+                                    try {
+                                        await Share.share({
+                                            message: `Pay invoice for $${total.toFixed(2)}: https://pay.pylon.com/pay?amount=${total.toFixed(2)}&client=${selectedClient?.name || 'Client'}`,
+                                            title: 'Invoice Payment Link'
+                                        });
+                                    } catch (error) {
+                                        console.error(error);
+                                    }
+                                }}
+                            >
+                                <Text style={styles.shareButtonText}>Share Payment Link</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            {/* Send Invoice Button */}
+            {/* Footer Buttons */}
             <View style={styles.footer}>
-                <SendInvoiceButton onSend={handleSendInvoice} />
+                <TouchableOpacity
+                    style={styles.draftButton}
+                    onPress={handleSaveDraft}
+                    activeOpacity={0.7}
+                >
+                    <FileText size={20} color={colors.dark.text} />
+                    <Text style={styles.draftButtonText}>Draft</Text>
+                </TouchableOpacity>
+                <View style={styles.sendButtonContainer}>
+                    <SendInvoiceButton
+                        onSend={handleSendInvoice}
+                        onAnimationComplete={handleAnimationComplete}
+                    />
+                </View>
             </View>
+
+            {/* Sent Popup */}
+            <Modal
+                visible={showSentPopup}
+                transparent
+                animationType="fade"
+            >
+                <View style={styles.popupOverlay}>
+                    <View style={styles.popupContent}>
+                        <CheckCircle size={48} color={colors.dark.primary} strokeWidth={1.5} />
+                        <Text style={styles.popupText}>
+                            Invoice sent to {selectedClient?.name || "Client"}
+                        </Text>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Modals */}
             <ClientPickerModal />
-
-            <PickerModal
-                visible={showIssuedDatePicker}
-                onClose={() => setShowIssuedDatePicker(false)}
-                title="Select Issued Date"
-                options={DATE_OPTIONS}
-                onSelect={setIssuedDate}
-                selectedValue={issuedDate}
+            <AddClientModal
+                visible={showAddClientModal}
+                onClose={() => setShowAddClientModal(false)}
+                onSave={handleAddClientSave}
             />
 
-            <PickerModal
-                visible={showDueDatePicker}
-                onClose={() => setShowDueDatePicker(false)}
-                title="Select Due Date"
-                options={DATE_OPTIONS}
-                onSelect={setDueDate}
-                selectedValue={dueDate}
+            {/* Native Date Pickers */}
+            {(showIssuedDatePicker || (Platform.OS === 'ios' && showIssuedDatePicker)) && (
+                <DateTimePicker
+                    value={issuedDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(event, date) => {
+                        setShowIssuedDatePicker(Platform.OS === 'ios'); // Keep open on iOS until confirmed? No, usually close on interactions or separate logic
+                        if (date) setIssuedDate(date);
+                        if (Platform.OS === 'android') setShowIssuedDatePicker(false);
+                    }}
+                />
+            )}
+
+            {(Platform.OS === 'ios' && showIssuedDatePicker) && (
+                <Modal visible={true} transparent animationType="fade">
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowIssuedDatePicker(false)}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Select Issued Date</Text>
+                                <TouchableOpacity onPress={() => setShowIssuedDatePicker(false)}>
+                                    <Text style={{ color: colors.dark.primary, fontSize: 16, fontWeight: '600' }}>Done</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <DateTimePicker
+                                value={issuedDate}
+                                mode="date"
+                                display="spinner"
+                                onChange={(event, date) => {
+                                    if (date) setIssuedDate(date);
+                                }}
+                                textColor={colors.dark.text}
+                            />
+                        </View>
+                    </Pressable>
+                </Modal>
+            )}
+
+            {/* Due Date Picker - iOS Modal Wrapper / Android Inline */}
+            {(Platform.OS === 'ios' && showDueDatePicker) && (
+                <Modal visible={true} transparent animationType="fade">
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowDueDatePicker(false)}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Select Due Date</Text>
+                                <TouchableOpacity onPress={() => setShowDueDatePicker(false)}>
+                                    <Text style={{ color: colors.dark.primary, fontSize: 16, fontWeight: '600' }}>Done</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <DateTimePicker
+                                value={dueDate}
+                                mode="date"
+                                display="spinner"
+                                onChange={(event, date) => {
+                                    if (date) setDueDate(date);
+                                }}
+                                textColor={colors.dark.text}
+                            />
+                        </View>
+                    </Pressable>
+                </Modal>
+            )}
+
+            {Platform.OS === 'android' && showDueDatePicker && (
+                <DateTimePicker
+                    value={dueDate}
+                    mode="date"
+                    display="default"
+                    onChange={(event, date) => {
+                        setShowDueDatePicker(false);
+                        if (date) setDueDate(date);
+                    }}
+                />
+            )}
+
+            <Toast
+                visible={toastVisible}
+                message={toastMessage}
+                onHide={() => setToastVisible(false)}
             />
+
         </SafeAreaView>
     );
 }
@@ -797,6 +1022,30 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: "Manrope_600SemiBold",
         color: colors.dark.text,
+    },
+    popupOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    popupContent: {
+        backgroundColor: colors.dark.surface,
+        borderRadius: 24,
+        padding: 32,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10,
+        gap: 16,
+    },
+    popupText: {
+        fontSize: 18,
+        fontFamily: "Manrope_600SemiBold",
+        color: colors.dark.text,
+        textAlign: 'center',
     },
     addNewClient: {
         fontSize: 14,
@@ -1059,6 +1308,9 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     footer: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
         paddingHorizontal: 20,
         paddingVertical: 16,
         paddingBottom: Platform.OS === "ios" ? 8 : 16,
@@ -1131,5 +1383,61 @@ const styles = StyleSheet.create({
     modalOptionTextSelected: {
         color: colors.dark.primary,
         fontFamily: "Manrope_600SemiBold",
+    },
+    draftButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colors.dark.surface,
+        borderRadius: 9999,
+        paddingVertical: 18,
+        paddingHorizontal: 24,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: colors.dark.border,
+    },
+    draftButtonText: {
+        fontSize: 16,
+        fontFamily: "Manrope_600SemiBold",
+        color: colors.dark.text,
+    },
+    sendButtonContainer: {
+        flex: 1,
+    },
+    // QR Code Section Styles
+    qrContainer: {
+        alignItems: 'center',
+        paddingVertical: 16,
+    },
+    qrWrapper: {
+        padding: 16,
+        backgroundColor: 'white',
+        borderRadius: 16,
+        marginBottom: 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+        elevation: 4,
+    },
+    qrHelperText: {
+        fontSize: 14,
+        fontFamily: "Manrope_500Medium",
+        color: colors.dark.textSecondary,
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    shareButton: {
+        backgroundColor: colors.dark.surfaceElevated,
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.dark.primary,
+    },
+    shareButtonText: {
+        fontSize: 15,
+        fontFamily: "Manrope_600SemiBold",
+        color: colors.dark.primary,
     },
 });

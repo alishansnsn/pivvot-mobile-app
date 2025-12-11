@@ -24,19 +24,34 @@ interface BalanceCardProps {
 export default function BalanceCard({ isRevealed = false, onToggleReveal }: BalanceCardProps) {
     const router = useRouter();
     const slideAnim = useRef(new Animated.Value(0)).current;
+    const rotateAnim = useRef(new Animated.Value(0)).current;
 
     const handleNewInvoice = () => {
         router.push("/new-invoice");
     };
 
     useEffect(() => {
-        Animated.spring(slideAnim, {
-            toValue: isRevealed ? SLIDE_DISTANCE : 0,
-            friction: 8,
-            tension: 40,
-            useNativeDriver: true,
-        }).start();
+        Animated.parallel([
+            Animated.spring(slideAnim, {
+                toValue: isRevealed ? SLIDE_DISTANCE : 0,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+            }),
+            Animated.spring(rotateAnim, {
+                toValue: isRevealed ? 1 : 0,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+            }),
+        ]).start();
     }, [isRevealed]);
+
+    // Interpolate rotation
+    const chevronRotation = rotateAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0deg', '180deg'],
+    });
 
     const pathData = `
     M 0,${RADIUS}
@@ -68,7 +83,10 @@ export default function BalanceCard({ isRevealed = false, onToggleReveal }: Bala
                         <Text style={styles.cardLabel}>Card number</Text>
                         <View style={styles.cardNumberRow}>
                             <Text style={styles.cardNumberFull}>3456 5667 3211 3377</Text>
-                            <Text style={styles.copyIcon}>⎘</Text>
+                            <Svg width={20} height={20} viewBox="0 0 24 24">
+                                <Path fill="#1a1a1a" fillOpacity={0.6} d="M15.24 2h-3.894c-1.764 0-3.162 0-4.255.148c-1.126.152-2.037.472-2.755 1.193c-.719.721-1.038 1.636-1.189 2.766C3 7.205 3 8.608 3 10.379v5.838c0 1.508.92 2.8 2.227 3.342c-.067-.91-.067-2.185-.067-3.247v-5.01c0-1.281 0-2.386.118-3.27c.127-.948.413-1.856 1.147-2.593s1.639-1.024 2.583-1.152c.88-.118 1.98-.118 3.257-.118h3.07c1.276 0 2.374 0 3.255.118A3.6 3.6 0 0 0 15.24 2" />
+                                <Path fill="#1a1a1a" fillOpacity={0.6} d="M6.6 11.397c0-2.726 0-4.089.844-4.936c.843-.847 2.2-.847 4.916-.847h2.88c2.715 0 4.073 0 4.917.847S21 8.671 21 11.397v4.82c0 2.726 0 4.089-.843 4.936c-.844.847-2.202.847-4.917.847h-2.88c-2.715 0-4.073 0-4.916-.847c-.844-.847-.844-2.21-.844-4.936z" />
+                            </Svg>
                         </View>
                         <View style={styles.cardDetailsRow}>
                             <View>
@@ -81,7 +99,10 @@ export default function BalanceCard({ isRevealed = false, onToggleReveal }: Bala
                                 <Text style={styles.cardLabel}>CVV</Text>
                                 <View style={styles.cvvRow}>
                                     <Text style={styles.cardDetailText}>277</Text>
-                                    <Text style={styles.copyIcon}>⎘</Text>
+                                    <Svg width={20} height={20} viewBox="0 0 24 24">
+                                        <Path fill="#1a1a1a" fillOpacity={0.6} d="M15.24 2h-3.894c-1.764 0-3.162 0-4.255.148c-1.126.152-2.037.472-2.755 1.193c-.719.721-1.038 1.636-1.189 2.766C3 7.205 3 8.608 3 10.379v5.838c0 1.508.92 2.8 2.227 3.342c-.067-.91-.067-2.185-.067-3.247v-5.01c0-1.281 0-2.386.118-3.27c.127-.948.413-1.856 1.147-2.593s1.639-1.024 2.583-1.152c.88-.118 1.98-.118 3.257-.118h3.07c1.276 0 2.374 0 3.255.118A3.6 3.6 0 0 0 15.24 2" />
+                                        <Path fill="#1a1a1a" fillOpacity={0.6} d="M6.6 11.397c0-2.726 0-4.089.844-4.936c.843-.847 2.2-.847 4.916-.847h2.88c2.715 0 4.073 0 4.917.847S21 8.671 21 11.397v4.82c0 2.726 0 4.089-.843 4.936c-.844.847-2.202.847-4.917.847h-2.88c-2.715 0-4.073 0-4.916-.847c-.844-.847-.844-2.21-.844-4.936z" />
+                                    </Svg>
                                 </View>
                             </View>
                         </View>
@@ -99,10 +120,10 @@ export default function BalanceCard({ isRevealed = false, onToggleReveal }: Bala
                 ]}
             >
                 <TouchableOpacity activeOpacity={1} onPress={onToggleReveal}>
-                    {/* Notch arrow indicator */}
-                    <View style={styles.notchArrow}>
+                    {/* Notch arrow indicator with rotation */}
+                    <Animated.View style={[styles.notchArrow, { transform: [{ rotate: chevronRotation }] }]}>
                         <ChevronUp size={16} color={colors.dark.textSecondary} strokeWidth={2.5} />
-                    </View>
+                    </Animated.View>
 
                     {/* The SVG shape */}
                     <View style={styles.svgContainer}>
@@ -256,6 +277,7 @@ const styles = StyleSheet.create({
         height: CARD_HEIGHT,
         padding: 24,
         paddingTop: 40,
+        justifyContent: "space-between", // Ensure space distribution
     },
     label: {
         color: colors.dark.textSecondary,
@@ -274,16 +296,20 @@ const styles = StyleSheet.create({
         color: colors.dark.primary,
         fontSize: 16,
         fontFamily: "Manrope_600SemiBold",
-        marginBottom: 40,
+        marginBottom: 26,
     },
     actionsRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         paddingHorizontal: 10,
+        marginBottom: 20, // Add bottom padding/margin as requested
+        marginTop: "auto", // Push to bottom but respecter padding
     },
     actionItem: {
         alignItems: "center",
         gap: 8,
+        // Move slightly upwards if needed, but marginTop: auto handles positioning
+        transform: [{ translateY: -10 }], // Explicit request to move slightly upwards
     },
     circleButton: {
         width: 56,

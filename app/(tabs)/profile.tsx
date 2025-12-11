@@ -5,91 +5,20 @@ import {
     FlatList,
     TouchableOpacity,
     ScrollView,
+    Animated,
+    RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { SlidersHorizontal, Calendar, CheckCircle2 } from "lucide-react-native";
-import { useState, useMemo } from "react";
+import { SlidersHorizontal, Calendar, CheckCircle2, Trash2, DollarSign } from "lucide-react-native";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { Image } from "expo-image";
+import { Swipeable } from "react-native-gesture-handler";
+import { Confetti, ConfettiRef } from "@/components/ui/confetti";
 import colors from "@/constants/colors";
-
-// Type definitions
-type InvoiceStatus = "Paid" | "Unpaid" | "Overdue" | "Draft";
-
-interface Invoice {
-    id: string;
-    companyName: string;
-    invoiceNumber: string;
-    date: string;
-    amount: number;
-    status: InvoiceStatus;
-    domain?: string;
-    logoColor: string;
-}
-
-// Mock invoice data
-const invoices: Invoice[] = [
-    {
-        id: "1",
-        companyName: "Acme Corp",
-        invoiceNumber: "#INV-1001",
-        date: "24 Oct, 2023",
-        amount: 1200.0,
-        status: "Paid",
-        domain: "acme.com",
-        logoColor: "#6EE798",
-    },
-    {
-        id: "2",
-        companyName: "Globex Inc.",
-        invoiceNumber: "#INV-1002",
-        date: "01 Nov, 2023",
-        amount: 850.0,
-        status: "Unpaid",
-        domain: "globex.com",
-        logoColor: "#FFD700",
-    },
-    {
-        id: "3",
-        companyName: "Soylent Corp",
-        invoiceNumber: "#INV-1003",
-        date: "15 Oct, 2023",
-        amount: 2500.0,
-        status: "Overdue",
-        domain: "soylent.com",
-        logoColor: "#FF6B6B",
-    },
-    {
-        id: "4",
-        companyName: "Initech",
-        invoiceNumber: "#INV-1004",
-        date: "05 Nov, 2023",
-        amount: 0.0,
-        status: "Draft",
-        domain: "initech.com",
-        logoColor: "#9CA3AF",
-    },
-    {
-        id: "5",
-        companyName: "Umbrella Corp",
-        invoiceNumber: "#INV-1005",
-        date: "10 Nov, 2023",
-        amount: 3400.0,
-        status: "Paid",
-        domain: "umbrellacorp.com",
-        logoColor: "#E74C3C",
-    },
-    {
-        id: "6",
-        companyName: "Wonka Industries",
-        invoiceNumber: "#INV-1006",
-        date: "18 Nov, 2023",
-        amount: 1750.0,
-        status: "Unpaid",
-        domain: "wonka.com",
-        logoColor: "#9B59B6",
-    },
-];
+import PaymentModal from "@/components/PaymentModal";
+import InvoiceDetailsModal from "@/components/InvoiceDetailsModal";
+import { useInvoiceStore, Invoice, InvoiceStatus } from "@/store/invoiceStore";
 
 // Filter options
 const filters = ["All", "Paid", "Unpaid", "Overdue", "Drafts"] as const;
@@ -153,74 +82,185 @@ function FilterChip({
     );
 }
 
-// Invoice card component
-function InvoiceCard({ invoice }: { invoice: Invoice }) {
-    const statusStyle = getStatusStyle(invoice.status);
-    const [imageError, setImageError] = useState(false);
-    const logoUrl = invoice.domain
-        ? `https://logo.clearbit.com/${invoice.domain}`
-        : null;
+// Shimmer loading component
+function ShimmerPlaceholder() {
+    const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.loop(
+            Animated.timing(shimmerAnim, {
+                toValue: 1,
+                duration: 1200,
+                useNativeDriver: true,
+            })
+        ).start();
+    }, [shimmerAnim]);
+
+    const translateX = shimmerAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-32, 32],
+    });
 
     return (
-        <TouchableOpacity style={styles.invoiceCard} activeOpacity={0.7}>
-            {/* Left Pane: Logo */}
-            <View
-                style={[styles.logoContainer, { backgroundColor: invoice.logoColor }]}
-            >
-                {logoUrl && !imageError ? (
-                    <Image
-                        source={{ uri: logoUrl }}
-                        style={styles.logoImage}
-                        contentFit="contain"
-                        onError={() => setImageError(true)}
-                    />
-                ) : (
-                    <Text style={styles.logoFallback}>
-                        {invoice.companyName.charAt(0)}
-                    </Text>
-                )}
-            </View>
+        <View style={styles.shimmerContainer}>
+            <Animated.View
+                style={[
+                    styles.shimmerGradient,
+                    { transform: [{ translateX }] },
+                ]}
+            />
+        </View>
+    );
+}
 
-            {/* Center Pane: Details */}
-            <View style={styles.detailsContainer}>
-                <Text style={styles.companyName}>{invoice.companyName}</Text>
-                <Text style={styles.invoiceNumber}>{invoice.invoiceNumber}</Text>
-                <View style={styles.dateRow}>
-                    <Calendar
-                        color={colors.dark.textSecondary}
-                        size={14}
-                        strokeWidth={1.5}
-                    />
-                    <Text style={styles.dateText}>{invoice.date}</Text>
-                </View>
-            </View>
+// Invoice card component with swipe actions
+function InvoiceCard({
+    invoice,
+    onPress,
+    onDelete,
+    onMarkAsPaid,
+}: {
+    invoice: Invoice;
+    onPress: (invoice: Invoice) => void;
+    onDelete: (invoice: Invoice) => void;
+    onMarkAsPaid: (invoice: Invoice) => void;
+}) {
+    const statusStyle = getStatusStyle(invoice.status);
+    const [imageLoading, setImageLoading] = useState(true);
+    const [imageError, setImageError] = useState(false);
+    const swipeableRef = useRef<Swipeable>(null);
 
-            {/* Right Pane: Status & Amount */}
-            <View style={styles.rightPane}>
-                <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                    {statusStyle.showIcon && (
-                        <CheckCircle2
-                            color={statusStyle.text}
-                            size={14}
-                            strokeWidth={2}
-                            style={{ marginRight: 4 }}
-                        />
-                    )}
-                    <Text style={[styles.statusText, { color: statusStyle.text }]}>
-                        {invoice.status}
-                    </Text>
-                </View>
-                <Text style={styles.amount}>
-                    ${invoice.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                </Text>
-            </View>
+    // Use logo.dev API instead of Clearbit
+    const logoUrl = invoice.domain
+        ? `https://img.logo.dev/${invoice.domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ`
+        : null;
+
+    const renderLeftActions = () => (
+        <TouchableOpacity
+            style={styles.swipeActionLeft}
+            onPress={() => {
+                swipeableRef.current?.close();
+                onMarkAsPaid(invoice);
+            }}
+        >
+            <DollarSign color="#FFFFFF" size={24} strokeWidth={2} />
+            <Text style={styles.swipeActionText}>Mark Paid</Text>
         </TouchableOpacity>
+    );
+
+    const renderRightActions = () => (
+        <TouchableOpacity
+            style={styles.swipeActionRight}
+            onPress={() => {
+                swipeableRef.current?.close();
+                onDelete(invoice);
+            }}
+        >
+            <Trash2 color="#FFFFFF" size={24} strokeWidth={2} />
+            <Text style={styles.swipeActionText}>Delete</Text>
+        </TouchableOpacity>
+    );
+
+    return (
+        <Swipeable
+            ref={swipeableRef}
+            renderLeftActions={invoice.status !== "Paid" ? renderLeftActions : undefined}
+            renderRightActions={renderRightActions}
+            overshootLeft={false}
+            overshootRight={false}
+            friction={2}
+        >
+            <TouchableOpacity
+                style={styles.invoiceCard}
+                activeOpacity={0.7}
+                onPress={() => onPress(invoice)}
+            >
+                {/* Left Pane: Logo with shimmer */}
+                <View
+                    style={[styles.logoContainer, { backgroundColor: invoice.logoColor }]}
+                >
+                    {logoUrl && !imageError ? (
+                        <>
+                            {imageLoading && <ShimmerPlaceholder />}
+                            <Image
+                                source={{ uri: logoUrl }}
+                                style={[styles.logoImage, imageLoading && { opacity: 0 }]}
+                                contentFit="contain"
+                                onLoad={() => setImageLoading(false)}
+                                onError={() => {
+                                    setImageError(true);
+                                    setImageLoading(false);
+                                }}
+                            />
+                        </>
+                    ) : (
+                        <Text style={styles.logoFallback}>
+                            {invoice.companyName.charAt(0)}
+                        </Text>
+                    )}
+                </View>
+
+                {/* Center Pane: Details */}
+                <View style={styles.detailsContainer}>
+                    <Text style={styles.companyName}>{invoice.companyName}</Text>
+                    <Text style={styles.invoiceNumber}>{invoice.invoiceNumber}</Text>
+                    <View style={styles.dateRow}>
+                        <Calendar
+                            color={colors.dark.textSecondary}
+                            size={14}
+                            strokeWidth={1.5}
+                        />
+                        <Text style={styles.dateText}>{invoice.date}</Text>
+                    </View>
+                </View>
+
+                {/* Right Pane: Status & Amount */}
+                <View style={styles.rightPane}>
+                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                        {statusStyle.showIcon && (
+                            <CheckCircle2
+                                color={statusStyle.text}
+                                size={14}
+                                strokeWidth={2}
+                                style={{ marginRight: 4 }}
+                            />
+                        )}
+                        <Text style={[styles.statusText, { color: statusStyle.text }]}>
+                            {invoice.status}
+                        </Text>
+                    </View>
+                    <Text style={styles.amount}>
+                        ${invoice.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </Text>
+                </View>
+            </TouchableOpacity>
+        </Swipeable>
     );
 }
 
 export default function InvoicesScreen() {
     const router = useRouter();
+    const { invoices, markAsPaid, deleteInvoice } = useInvoiceStore();
     const [activeFilter, setActiveFilter] = useState<FilterOption>("All");
+
+    // Payment Modal State
+    const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+    const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+    // Details Modal State
+    const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+    const [showReminder, setShowReminder] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        setTimeout(() => {
+            setRefreshing(false);
+        }, 2000);
+    };
+
+    // Confetti Ref
+    const confettiRef = useRef<ConfettiRef>(null);
 
     // Filter invoices based on active filter
     const filteredInvoices = useMemo(() => {
@@ -229,7 +269,62 @@ export default function InvoicesScreen() {
             return invoices.filter((inv) => inv.status === "Draft");
         }
         return invoices.filter((inv) => inv.status === activeFilter);
-    }, [activeFilter]);
+    }, [activeFilter, invoices]);
+
+    const handleInvoicePress = (invoice: Invoice) => {
+        setSelectedInvoice(invoice);
+
+        switch (invoice.status) {
+            case "Paid":
+                setShowReminder(false);
+                setDetailsModalVisible(true);
+                break;
+            case "Overdue":
+                setShowReminder(true);
+                setDetailsModalVisible(true);
+                break;
+            case "Draft":
+                // Navigate to edit draft
+                router.push(`/new-invoice?invoiceId=${invoice.id}`);
+                break;
+            case "Unpaid":
+                setPaymentModalVisible(true);
+                break;
+        }
+    };
+
+    const handleConfirmPayment = () => {
+        if (selectedInvoice) {
+            // Update invoice status via store
+            markAsPaid(selectedInvoice.id);
+
+            setPaymentModalVisible(false);
+            setSelectedInvoice(null);
+
+            // Fire confetti
+            setTimeout(() => {
+                confettiRef.current?.fire();
+            }, 500);
+        }
+    };
+
+    const handleSendReminder = () => {
+        console.log("Sending reminder for:", selectedInvoice?.invoiceNumber);
+        setDetailsModalVisible(false);
+        setSelectedInvoice(null);
+    };
+
+    const handleDelete = (invoice: Invoice) => {
+        deleteInvoice(invoice.id);
+    };
+
+    const handleSwipeMarkAsPaid = (invoice: Invoice) => {
+        markAsPaid(invoice.id);
+        // Fire confetti
+        setTimeout(() => {
+            confettiRef.current?.fire();
+        }, 300);
+    };
 
     return (
         <SafeAreaView style={styles.container} edges={["top"]}>
@@ -267,9 +362,21 @@ export default function InvoicesScreen() {
             <FlatList
                 data={filteredInvoices}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <InvoiceCard invoice={item} />}
+                renderItem={({ item }) => (
+                    <InvoiceCard
+                        invoice={item}
+                        onPress={handleInvoicePress}
+                        onDelete={handleDelete}
+                        onMarkAsPaid={handleSwipeMarkAsPaid}
+                    />
+                )}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark.text} />
+                }
                 ItemSeparatorComponent={() => <View style={styles.separator} />}
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
@@ -277,6 +384,36 @@ export default function InvoicesScreen() {
                     </View>
                 }
             />
+
+            {/* Payment Modal */}
+            <PaymentModal
+                visible={paymentModalVisible}
+                onClose={() => setPaymentModalVisible(false)}
+                onConfirm={handleConfirmPayment}
+                invoice={selectedInvoice}
+            />
+
+            {/* Details Modal (Paid/Overdue) */}
+            <InvoiceDetailsModal
+                visible={detailsModalVisible}
+                onClose={() => setDetailsModalVisible(false)}
+                invoice={selectedInvoice}
+                showReminder={showReminder}
+                onSendReminder={handleSendReminder}
+                onMarkAsPaid={() => {
+                    if (selectedInvoice) {
+                        markAsPaid(selectedInvoice.id);
+                        setDetailsModalVisible(false);
+                        setSelectedInvoice(null);
+                        // Fire confetti
+                        setTimeout(() => {
+                            confettiRef.current?.fire();
+                        }, 300);
+                    }
+                }}
+            />
+
+            <Confetti ref={confettiRef} />
         </SafeAreaView>
     );
 }
@@ -419,5 +556,42 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: "Manrope_500Medium",
         color: colors.dark.textSecondary,
+    },
+    // Shimmer styles
+    shimmerContainer: {
+        position: "absolute",
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: "rgba(255,255,255,0.1)",
+        overflow: "hidden",
+    },
+    shimmerGradient: {
+        width: 64,
+        height: 32,
+        backgroundColor: "rgba(255,255,255,0.2)",
+    },
+    // Swipe action styles
+    swipeActionLeft: {
+        backgroundColor: "#4ADE80",
+        justifyContent: "center",
+        alignItems: "center",
+        width: 100,
+        borderRadius: 20,
+        marginRight: 12,
+    },
+    swipeActionRight: {
+        backgroundColor: "#F87171",
+        justifyContent: "center",
+        alignItems: "center",
+        width: 100,
+        borderRadius: 20,
+        marginLeft: 12,
+    },
+    swipeActionText: {
+        color: "#FFFFFF",
+        fontSize: 12,
+        fontFamily: "Manrope_600SemiBold",
+        marginTop: 4,
     },
 });
